@@ -121,17 +121,36 @@ def get_calendar_page_urls(
 async def parse_shifts_from_calendar_date_locator(
     shift_day: Locator,
 ) -> Iterable[FoodCoopShift]:
-    date_element = shift_day.locator("p b").first
-    _, date = (await date_element.inner_text()).strip().split()
+    day_data = await shift_day.evaluate(
+        """
+        (day) => {
+            const dateText = day.querySelector("p b")?.innerText?.trim() || "";
+            const shifts = Array.from(day.querySelectorAll("a.shift:not(.my_shift)")).map(
+                (shift) => ({
+                    href: shift.getAttribute("href") || "",
+                    time: shift.querySelector("b")?.innerText?.trim() || "",
+                    label: shift.innerText?.trim() || "",
+                })
+            );
+
+            return { dateText, shifts };
+        }
+        """
+    )
+
+    date_parts = day_data["dateText"].strip().split()
+    assert len(date_parts) >= 2, "Shift date text is missing"
+    date = date_parts[-1]
 
     shifts_for_key: dict[FoodCoopShiftKey, list[str]] = {}
-    for shift in await shift_day.locator("a.shift:not(.my_shift)").all():
-        url = await shift.get_attribute("href")
+    for shift in day_data["shifts"]:
+        url = shift["href"].strip()
         assert url, "Shift url is missing"
         url = f"{FOODCOOP_URL}{url.strip().rstrip('/')}"
 
-        start_time = await shift.locator("b").inner_text()
-        _, label = (await shift.inner_text()).strip().lstrip("🥕").split(maxsplit=1)
+        start_time = shift["time"].strip()
+        label_text = shift["label"].strip()
+        _, label = label_text.lstrip("🥕").split(maxsplit=1)
         shift_name, emoji = label.rsplit(maxsplit=1)
 
         # Put the emoji in front of the label for easier visual parsing on the calendar
