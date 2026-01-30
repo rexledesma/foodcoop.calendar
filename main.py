@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import time
 from datetime import datetime, timedelta
@@ -6,15 +7,11 @@ from pathlib import Path
 from typing import Iterable, cast
 from zoneinfo import ZoneInfo
 
-import uvloop
-from dotenv import load_dotenv
 from gcsa.event import Event
 from gcsa.google_calendar import GoogleCalendar
-from google.oauth2 import service_account
+from google.oauth2.service_account import Credentials
 from playwright.async_api import BrowserContext, Locator, async_playwright
 from pydantic import BaseModel, ConfigDict
-
-load_dotenv()
 
 GOOGLE_FOODCOOP_SHIFT_CALENDAR_ID = "9b8f99f4caf33d2afbd17ac5f64a5113c7e373686247a7126b6a0b96a8cbd462@group.calendar.google.com"
 GOOGLE_FOODCOOP_LOCATION = "Park Slope Food Coop"
@@ -34,6 +31,25 @@ FOODCOOP_URL = "https://members.foodcoop.com"
 FOODCOOP_LOGIN_URL = f"{FOODCOOP_URL}/services/login"
 FOODCOOP_HOME_URL = f"{FOODCOOP_URL}/services/home"
 FOODCOOP_SHIFT_CALENDAR_URL = f"{FOODCOOP_URL}/services/shifts"
+
+GOOGLE_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
+
+def get_google_credentials() -> Credentials:
+    """Get Google credentials from environment variable or file.
+
+    In Modal, credentials are passed as a JSON string in GOOGLE_CREDENTIALS_JSON.
+    For local development, credentials are read from credentials.json file.
+    """
+    if creds_json := os.getenv("GOOGLE_CREDENTIALS_JSON"):
+        return Credentials.from_service_account_info(
+            json.loads(creds_json),
+            scopes=GOOGLE_CALENDAR_SCOPES,
+        )
+    return Credentials.from_service_account_file(
+        GOOGLE_SERVICE_ACCOUNT_JSON_PATH,
+        scopes=GOOGLE_CALENDAR_SCOPES,
+    )
 
 
 async def authenticate_into_foodcoop(browser_context: BrowserContext):
@@ -194,12 +210,7 @@ def create_event_from_shift(
 def reconcile_shifts_to_google_calendar(shifts: list[FoodCoopShift]):
     foodcoop_shift_calendar = GoogleCalendar(
         default_calendar=GOOGLE_FOODCOOP_SHIFT_CALENDAR_ID,
-        credentials=service_account.Credentials.from_service_account_file(
-            GOOGLE_SERVICE_ACCOUNT_JSON_PATH,
-            scopes=[
-                "https://www.googleapis.com/auth/calendar",
-            ],
-        ),  # type: ignore
+        credentials=get_google_credentials(),  # type: ignore
     )
 
     existing_shifts_for_key: dict[FoodCoopShiftKey, tuple[FoodCoopShift, Event]] = {}
@@ -275,7 +286,3 @@ async def main():
     print(
         f"Finished reconciling shifts to calendar in {time.time() - start_time:.2f} seconds."
     )
-
-
-if __name__ == "__main__":
-    uvloop.run(main())
