@@ -13,26 +13,7 @@ from google.oauth2.service_account import Credentials
 from playwright.async_api import BrowserContext, Locator, async_playwright
 from pydantic import BaseModel, ConfigDict
 
-GOOGLE_FOODCOOP_SHIFT_CALENDAR_ID = "9b8f99f4caf33d2afbd17ac5f64a5113c7e373686247a7126b6a0b96a8cbd462@group.calendar.google.com"
-GOOGLE_FOODCOOP_LOCATION = "Park Slope Food Coop"
-GOOGLE_SERVICE_ACCOUNT_JSON_PATH = Path("credentials.json")
-
-FOODCOOP_SHIFT_LENGTH = timedelta(hours=2, minutes=45)
-FOODCOOP_NUM_SHIFT_CALENDAR_PAGES = 6
-
-FOODCOOP_USERNAME = os.getenv("FOODCOOP_USERNAME")
-FOODCOOP_PASSWORD = os.getenv("FOODCOOP_PASSWORD")
-
-FOODCOOP_USERNAME_INPUT = "Member Number or Email"
-FOODCOOP_PASSWORD_INPUT = "Password"
-FOODCOOP_LOGIN_BUTTON = "Log In"
-
 FOODCOOP_URL = "https://members.foodcoop.com"
-FOODCOOP_LOGIN_URL = f"{FOODCOOP_URL}/services/login"
-FOODCOOP_HOME_URL = f"{FOODCOOP_URL}/services/home"
-FOODCOOP_SHIFT_CALENDAR_URL = f"{FOODCOOP_URL}/services/shifts"
-
-GOOGLE_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
 def get_google_credentials() -> Credentials:
@@ -41,38 +22,41 @@ def get_google_credentials() -> Credentials:
     In Modal, credentials are passed as a JSON string in GOOGLE_CREDENTIALS_JSON.
     For local development, credentials are read from credentials.json file.
     """
+    scopes = ["https://www.googleapis.com/auth/calendar"]
+
     if creds_json := os.getenv("GOOGLE_CREDENTIALS_JSON"):
         return Credentials.from_service_account_info(
             json.loads(creds_json),
-            scopes=GOOGLE_CALENDAR_SCOPES,
+            scopes=scopes,
         )
     return Credentials.from_service_account_file(
-        GOOGLE_SERVICE_ACCOUNT_JSON_PATH,
-        scopes=GOOGLE_CALENDAR_SCOPES,
+        Path("credentials.json"),
+        scopes=scopes,
     )
 
 
 async def authenticate_into_foodcoop(browser_context: BrowserContext):
-    assert FOODCOOP_USERNAME, "FOODCOOP_USERNAME is not set"
-    assert FOODCOOP_PASSWORD, "FOODCOOP_PASSWORD is not set"
+    username = os.getenv("FOODCOOP_USERNAME")
+    password = os.getenv("FOODCOOP_PASSWORD")
+    assert username, "FOODCOOP_USERNAME is not set"
+    assert password, "FOODCOOP_PASSWORD is not set"
+
+    login_url = f"{FOODCOOP_URL}/services/login"
+    home_url = f"{FOODCOOP_URL}/services/home"
 
     page = await browser_context.new_page()
 
     login_start = time.perf_counter()
 
-    await page.goto(FOODCOOP_LOGIN_URL, wait_until="domcontentloaded")
+    await page.goto(login_url, wait_until="domcontentloaded")
 
-    await page.get_by_role("textbox", name=FOODCOOP_USERNAME_INPUT).fill(
-        FOODCOOP_USERNAME
-    )
-    await page.get_by_role("textbox", name=FOODCOOP_PASSWORD_INPUT).fill(
-        FOODCOOP_PASSWORD
-    )
-    await page.get_by_role("button", name=FOODCOOP_LOGIN_BUTTON).click()
+    await page.get_by_role("textbox", name="Member Number or Email").fill(username)
+    await page.get_by_role("textbox", name="Password").fill(password)
+    await page.get_by_role("button", name="Log In").click()
 
-    if not page.url.startswith(FOODCOOP_HOME_URL):
+    if not page.url.startswith(home_url):
         raise Exception(
-            f"Authentication failed. Expected to be redirected to {FOODCOOP_HOME_URL} but was at {page.url}."
+            f"Authentication failed. Expected to be redirected to {home_url} but was at {page.url}."
         )
 
     print(f"Login completed in {time.perf_counter() - login_start:.2f}s")
@@ -111,13 +95,12 @@ class FoodCoopShift(BaseModel):
         return shift
 
 
-def get_calendar_page_urls(
-    num_pages: int = FOODCOOP_NUM_SHIFT_CALENDAR_PAGES,
-) -> list[str]:
+def get_calendar_page_urls(num_pages: int = 6) -> list[str]:
     today = datetime.now()
+    shift_calendar_url = f"{FOODCOOP_URL}/services/shifts"
 
     return [
-        f"{FOODCOOP_SHIFT_CALENDAR_URL}/{shift_page}/0/0/{today.strftime('%Y-%m-%d')}/"
+        f"{shift_calendar_url}/{shift_page}/0/0/{today.strftime('%Y-%m-%d')}/"
         for shift_page in range(num_pages)
     ]
 
@@ -220,13 +203,14 @@ async def parse_shifts_from_calendar(
     return shifts
 
 
-def create_event_from_shift(
-    shift: FoodCoopShift,
-) -> Event:
+def create_event_from_shift(shift: FoodCoopShift) -> Event:
+    shift_length = timedelta(hours=2, minutes=45)
+    location = "Park Slope Food Coop"
+
     return Event(
         summary=shift.key.label,
         start=shift.key.start_time,
-        end=shift.key.start_time + FOODCOOP_SHIFT_LENGTH,
+        end=shift.key.start_time + shift_length,
         description="\n".join(
             [
                 f"{len(shift.urls)} shift(s) available for {shift.key.label}:",
@@ -235,13 +219,15 @@ def create_event_from_shift(
                 "</ul>",
             ]
         ),
-        location=GOOGLE_FOODCOOP_LOCATION,
+        location=location,
     )
 
 
 def reconcile_shifts_to_google_calendar(shifts: list[FoodCoopShift]):
+    calendar_id = "9b8f99f4caf33d2afbd17ac5f64a5113c7e373686247a7126b6a0b96a8cbd462@group.calendar.google.com"
+
     foodcoop_shift_calendar = GoogleCalendar(
-        default_calendar=GOOGLE_FOODCOOP_SHIFT_CALENDAR_ID,
+        default_calendar=calendar_id,
         credentials=get_google_credentials(),  # type: ignore
     )
 
