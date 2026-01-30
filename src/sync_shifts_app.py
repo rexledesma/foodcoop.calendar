@@ -6,7 +6,6 @@ image = (
     modal.Image.debian_slim(python_version="3.13")
     .uv_sync()
     .run_commands("playwright install --with-deps chromium")
-    .add_local_python_source("main")
 )
 
 
@@ -19,6 +18,6 @@ image = (
     ],
 )
 async def sync_shifts():
-    import main
+    from . import main
 
     await main.main()
