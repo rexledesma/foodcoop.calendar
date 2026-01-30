@@ -269,6 +269,14 @@ async def main():
         browser = await p.chromium.launch(headless=True)
         browser_context = await browser.new_context()
 
+        async def block_heavy_resources(route):
+            if route.request.resource_type in {"image", "font", "media"}:
+                await route.abort()
+                return
+            await route.continue_()
+
+        await browser_context.route("**/*", block_heavy_resources)
+
         await authenticate_into_foodcoop(browser_context)
 
         shifts = await parse_shifts_from_calendar(browser_context)
