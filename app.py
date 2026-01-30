@@ -1,6 +1,6 @@
 import modal
 
-app = modal.App("foodcoop-shift-calendar")
+app = modal.App("foodcoop.calendar")
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
