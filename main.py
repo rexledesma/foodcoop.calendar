@@ -58,6 +58,8 @@ async def authenticate_into_foodcoop(browser_context: BrowserContext):
 
     page = await browser_context.new_page()
 
+    login_start = time.perf_counter()
+
     await page.goto(FOODCOOP_LOGIN_URL, wait_until="domcontentloaded")
 
     await page.get_by_role("textbox", name=FOODCOOP_USERNAME_INPUT).fill(
@@ -72,6 +74,8 @@ async def authenticate_into_foodcoop(browser_context: BrowserContext):
         raise Exception(
             f"Authentication failed. Expected to be redirected to {FOODCOOP_HOME_URL} but was at {page.url}."
         )
+
+    print(f"Login completed in {time.perf_counter() - login_start:.2f}s")
 
 
 class FoodCoopShiftKey(BaseModel):
@@ -176,9 +180,14 @@ async def parse_shifts_from_calendar_page(
     url: str,
 ) -> list[FoodCoopShift]:
     page = await browser_context.new_page()
+    page_load_start = time.perf_counter()
     await page.goto(url, wait_until="domcontentloaded")
+    print(
+        f"Loaded calendar page {url} in {time.perf_counter() - page_load_start:.2f}s"
+    )
 
     shifts = []
+    parse_start = time.perf_counter()
     for task in asyncio.as_completed(
         [
             parse_shifts_from_calendar_date_locator(shift_day_locator)
@@ -188,6 +197,10 @@ async def parse_shifts_from_calendar_page(
         ]
     ):
         shifts.extend(await task)
+
+    print(
+        f"Parsed shifts from page {url} in {time.perf_counter() - parse_start:.2f}s"
+    )
 
     return shifts
 
