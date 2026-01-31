@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +15,7 @@ from playwright.async_api import BrowserContext, Locator, async_playwright
 from pydantic import BaseModel, ConfigDict
 
 FOODCOOP_URL = "https://members.foodcoop.com"
+EMOJI_RE = re.compile(r"^[\U0001F300-\U0001FAFF\U00002600-\U000027BF]\ufe0f?$")
 
 
 def get_google_credentials() -> Credentials:
@@ -137,11 +139,15 @@ async def parse_shifts_from_calendar_date_locator(
 
         start_time = shift["time"].strip()
         label_text = shift["label"].strip()
-        _, label = label_text.lstrip("🥕").split(maxsplit=1)
-        shift_name, emoji = label.rsplit(maxsplit=1)
+        cleaned_label = label_text.lstrip("🥕").strip()
+        label_parts = cleaned_label.split(maxsplit=1)
+        label = label_parts[1] if len(label_parts) == 2 else cleaned_label
 
-        # Put the emoji in front of the label for easier visual parsing on the calendar
-        label = f"{emoji} {shift_name}"
+        label_parts = label.rsplit(maxsplit=1)
+        if len(label_parts) == 2 and EMOJI_RE.fullmatch(label_parts[1]):
+            shift_name, emoji = label_parts
+            # Put the emoji in front of the label for easier visual parsing on the calendar
+            label = f"{emoji} {shift_name}"
 
         start_time = datetime.strptime(f"{date} {start_time}", "%m/%d/%Y %I:%M%p")
         start_time = start_time.replace(tzinfo=ZoneInfo("US/Eastern"))
@@ -165,9 +171,7 @@ async def parse_shifts_from_calendar_page(
     page = await browser_context.new_page()
     page_load_start = time.perf_counter()
     await page.goto(url, wait_until="domcontentloaded")
-    print(
-        f"Loaded calendar page {url} in {time.perf_counter() - page_load_start:.2f}s"
-    )
+    print(f"Loaded calendar page {url} in {time.perf_counter() - page_load_start:.2f}s")
 
     shifts = []
     parse_start = time.perf_counter()
@@ -181,9 +185,7 @@ async def parse_shifts_from_calendar_page(
     ):
         shifts.extend(await task)
 
-    print(
-        f"Parsed shifts from page {url} in {time.perf_counter() - parse_start:.2f}s"
-    )
+    print(f"Parsed shifts from page {url} in {time.perf_counter() - parse_start:.2f}s")
 
     return shifts
 
