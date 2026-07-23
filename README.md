@@ -8,6 +8,18 @@ Instead of searching the Park Slope Food Coop (PSFC) [📅 Shift Calendar](https
 
 This works by scraping the PSFC Shift Calendar every 20 minutes, reconciling with a public calendar.
 
+## Deployment
+
+```sh
+uvx modal deploy -m src.sync_shifts_app
+```
+
+Stop the deployed app and its scheduled sync:
+
+```sh
+uvx modal app stop foodcoop.calendar
+```
+
 ## Getting Started
 
 > [!NOTE]  
