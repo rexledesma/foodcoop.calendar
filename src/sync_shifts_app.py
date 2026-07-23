@@ -11,7 +11,7 @@ image = (
 
 @app.function(
     image=image,
-    schedule=modal.Cron("*/5 * * * *", timezone="America/New_York"),
+    schedule=modal.Cron("*/20 * * * *", timezone="America/New_York"),
     secrets=[
         modal.Secret.from_name("foodcoop-credentials"),
         modal.Secret.from_name("google-service-account"),
